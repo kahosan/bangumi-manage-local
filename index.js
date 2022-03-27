@@ -69,11 +69,13 @@
     });
 
     try {
-      fileUrl.match(/(?<=<a href=")%.*(?=">)/)[0];
+      fileUrl = fileUrl.match(/(?<=<a href=")%.*(?=">)/)[0];
     } catch (error) {
       console.log('请求 Url 出错，没找到文件\n', fileUrl);
       console.log(error);
     }
+
+    return fileUrl;
   }
 
   function openMpv(path) {
