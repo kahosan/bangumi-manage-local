@@ -1,3 +1,4 @@
+// @ts-nocheck
 // ==UserScript==
 // @name         open in mpv
 // @namespace    http://tampermonkey.net/
@@ -8,7 +9,9 @@
 // @match        https://bgm.tv/subject/*
 // @icon         data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==
 // @grant        GM_xmlhttpRequest
-// @grant        GM_download
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_deleteValue
 // ==/UserScript==
 
 (function () {
@@ -23,9 +26,9 @@
     });
 
   // 定义下所需参数
-  const animeAddrList = [];
+  const animeList = [];
   const episodeList = document.querySelector('.prg_list');
-  const host = 'https://192.168.0.106/bangumi/';
+  const host = 'https://<host>/'; // 可以 nginx 开一个文件目录，host 指定 nginx 设的 location
 
   // 重新定义每集 a 标签的动作
   (function setMethod() {
@@ -39,12 +42,12 @@
    * 获取本地存储中所有的动漫名称，如过和 bgm 上的中文名称对不上就得手动改一下了
    * 还没想到好的办法解决
    * */
-  (function getAnimeAddrList() {
+  (function getAnimeList() {
     ajax({ method: 'GET', url: host }).then(res => {
       const DOM = new DOMParser().parseFromString(res.responseText, 'text/html');
 
       DOM.querySelectorAll('a').forEach(item => {
-        animeAddrList.push(item.textContent.slice(0, -1));
+        animeList.push(item.textContent.slice(0, -1));
       });
     });
   })();
@@ -65,29 +68,47 @@
       fileUrl = res.responseText;
     });
 
-    return fileUrl.match(/(?<=<a href=")%.*(?=">)/)[0];
+    try {
+      fileUrl.match(/(?<=<a href=")%.*(?=">)/)[0];
+    } catch (error) {
+      console.log('请求 Url 出错，没找到文件\n', fileUrl);
+      console.log(error);
+    }
+  }
+
+  function openMpv(path) {
+    const iframe = document.createElement('iframe');
+    iframe.src = `mpv://play/${window.btoa(path)}`;
+    document.body.appendChild(iframe);
   }
 
   // 点击播放
   async function playToMpv(event) {
     const ep = +event.target.textContent; // 获取点击的是哪集
+    const epId = +event.target.id.slice(4);
     const curAnimeName = getCurAnimeName();
     let path; // 完整的地址
+    let addr = GM_getValue(curAnimeName) ?? curAnimeName;
 
-    if (!animeAddrList.includes(curAnimeName)) {
-      let addr = '';
-      prompt('没找到动漫地址，请手动输入文件夹里的动漫名称', addr);
+    if (!animeList.includes(curAnimeName) && !GM_getValue(curAnimeName)) {
+      addr = prompt('没找到动漫路径，请手动输入文件夹里的动漫名称', addr);
 
-      if (animeAddrList.includes(addr)) alert('检查一下文件夹名称和 bgm 中文动漫名称是否对的上');
-
-      path = `${host}/${encodeURIComponent(curAnimeName)}/${ep}/${await getAnimeFileUrl(curAnimeName, ep)}`;
+      GM_setValue(curAnimeName, addr);
+      path = `${host}/${encodeURIComponent(addr)}/${ep}/${await getAnimeFileUrl(addr, ep)}`;
     }
 
-    path = path ?? `${host}/${encodeURIComponent(curAnimeName)}/${ep}/${await getAnimeFileUrl(curAnimeName, ep)}`;
+    if (!animeList.includes(addr)) {
+      alert('检查一下文件夹名称和 bgm 中文动漫名称是否对的上');
+      GM_deleteValue(curAnimeName);
+      return;
+    }
+
+    path = path ?? `${host}/${encodeURIComponent(addr)}/${ep}/${await getAnimeFileUrl(addr, ep)}`;
 
     // 自定义的 URl Protocol 只能这样打开
-    const iframe = document.createElement('iframe');
-    iframe.src = `mpv://play/${window.btoa(path)}`;
-    document.body.appendChild(iframe);
+    openMpv(path);
+
+    // 标记为 看过
+    document.querySelector(`#Watched_${epId}`).click();
   }
 })();
